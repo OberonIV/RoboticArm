@@ -5,61 +5,53 @@ This code verifies two 28BYJ-48 motors with different commands.
 These commands include enabling either motor, both motors,
 both motors operating in different directions, and halting all processes.
 */
-
 #include <Stepper.h>
+#include <Servo.h>
 
 const int steps_per_revolution = 2048;
-const int role_per_minute = 10;  // Adjust speed for smooth motion, max for 28BYJ-48 is 17 I believe
+const int role_per_minute = 10;  // Adjust speed for smooth motion
 
-// Initialize stepper motors
-Stepper stepper_1(steps_per_revolution, 8, 10, 9, 11); // 8 goes to INT1, 10 to INT2, etc...
-Stepper stepper_2(steps_per_revolution, 4, 5, 6, 7); // 4 goes to INT1, 5 to INT2, etc...
+// Initialize stepper motor
+Stepper stepper_1(steps_per_revolution, 8, 10, 9, 11);
+
+// Initialize servo motor
+Servo servo_1;
+const int servo_pin = 3;  // Servo connected to pin 3
 
 void setup() {
   Serial.begin(9600); // Baud rate
   stepper_1.setSpeed(role_per_minute);
-  stepper_2.setSpeed(role_per_minute);
-
+  servo_1.attach(servo_pin);
+  
   Serial.println("Enter a command:");
-  Serial.println("'1' = Motor 1");
-  Serial.println("'2' = Motor 2");
-  Serial.println("'b' = Both motors same direction");
-  Serial.println("'o' = Both motors opposite directions");
-  Serial.println("'s' = Stop");
+  Serial.println("'s' = Move Stepper");
+  Serial.println("'0' to '180' = Move Servo to Angle");
+  Serial.println("'x' = Stop Stepper");
 }
 
 void loop() {  
   if (Serial.available() > 0) {
-    char command = Serial.read();  // Read user input
-
-    if (command == '1') {
-      Serial.println("Turning Motor 1 clockwise");
+    String input = Serial.readStringUntil('\n'); // Read user input
+    input.trim(); // Remove any whitespace
+    
+    if (input == "s") {
+      Serial.println("Turning Stepper Motor");
       stepper_1.step(steps_per_revolution);
     } 
-    else if (command == '2') {
-      Serial.println("Turning Motor 2 clockwise");
-      stepper_2.step(steps_per_revolution);
-    } 
-    else if (command == 'b') {
-      Serial.println("Turning both motors clockwise");
-      for (int i = 0; i < steps_per_revolution; i++) {
-        stepper_1.step(1);
-        stepper_2.step(1);
-      }
-    } 
-    else if (command == 'o') {
-      Serial.println("Turning motors in opposite directions");
-      for (int i = 0; i < steps_per_revolution; i++) {
-        stepper_1.step(1);   // Motor 1 clockwise
-        stepper_2.step(-1); // Motor 2 counterclockwise
-      }
-    }
-    else if (command == 's') {
-      Serial.println("Stopping motors");
-      // No stepping occurs, effectively stopping the motors
+    else if (input == "x") {
+      Serial.println("Stopping Stepper Motor");
+      // No stepping occurs, effectively stopping the motor
     } 
     else {
-      Serial.println("Invalid command. Enter '1', '2', 'b', 'o', or 's'.");
+      int angle = input.toInt();
+      if (angle >= 0 && angle <= 180) {
+        Serial.print("Moving Servo to ");
+        Serial.print(angle);
+        Serial.println(" degrees");
+        servo_1.write(angle);
+      } else {
+        Serial.println("Invalid command. Enter 's', 'x', or an angle between 0-180.");
+      }
     }
   }
 }
