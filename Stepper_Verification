@@ -35,8 +35,13 @@ void loop() {
     input.trim(); // Remove any whitespace
     
     if (input == "s") {
-      Serial.println("Turning Stepper Motor");
-      stepper_1.step(steps_per_revolution);
+      Serial.println("Turning Stepper Motor and Moving Servo");
+      for (int i = 0; i < steps_per_revolution; i++) {
+        stepper_1.step(1);
+        int angle = map(i, 0, steps_per_revolution, 0, 180);
+        servo_1.write(angle);
+        delay(2); // Small delay to allow both movements
+      }
     } 
     else if (input == "x") {
       Serial.println("Stopping Stepper Motor");
