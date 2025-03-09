@@ -1,10 +1,16 @@
 #include <Stepper.h>
 #include <Servo.h>
 #include <gcode.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
 #define NUMCOMMANDS 9
 #define STEPS_PER_REV 2048  // 28BYJ-48 stepper steps per revolution
 #define STEPS_MM 10         // Steps per mm for 28BYJ-48 (adjust as needed)
+#define OLED_RESET 4
+#define EMERGENCY_STOP_PIN 7 // Emergency stop switch pin
 
 // Stepper motor pins
 #define STEP_IN1 8
@@ -15,15 +21,21 @@
 // Servo pin
 #define SERVO_PIN 3
 
+Adafruit_SSD1306 display(OLED_RESET);
+
 // Stepper motor initialization
 Stepper stepperMotor(STEPS_PER_REV, STEP_IN1, STEP_IN3, STEP_IN2, STEP_IN4);
 Servo toolServo;
 
 bool absolutePositioning = true; // G90: Absolute mode, G91: Relative mode
 bool useMM = true;  // G21: mm mode, G20: inch mode
+bool emergencyStop = false; // Flag for emergency stop
 
 // Current position
 double position = 0;
+int p1 = 0;
+int p2 = 0;
+int p3 = 0;
 
 void homing();
 void moveLinear();
@@ -33,6 +45,13 @@ void setInches();
 void setMillimeters();
 void endProgram();
 void toolChange();
+void drawProgress(const char* message);
+void checkEmergencyStop();
+
+struct commandscallback {
+    const char* value;
+    void (*Callback)();
+};
 
 commandscallback commands[NUMCOMMANDS] = {
   {"G28", homing}, {"G0", moveLinear}, {"G1", moveLinear},
@@ -47,18 +66,30 @@ void setup() {
   Commands.begin();
   stepperMotor.setSpeed(10); // Adjust speed as needed
   toolServo.attach(SERVO_PIN);
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  Serial.begin(9600);
+  pinMode(EMERGENCY_STOP_PIN, INPUT_PULLUP); // Set emergency stop pin
+  drawProgress("Awaiting input");
 }
 
 void loop() {
-  Commands.available();
+  checkEmergencyStop();
+  if (!emergencyStop) {
+    Commands.available();
+  }
 }
 
 void homing() {
+  drawProgress("Homing...");
   position = 0;
   Commands.comment("Homing completed.");
+  drawProgress("Finished");
 }
 
 void moveLinear() {
+  if (emergencyStop) return;
+  drawProgress("Drawing...");
+
   double newX = position;
   if (Commands.availableValue('X')) newX = Commands.GetValue('X');
   double newY = 0; // Default Y axis value
@@ -69,13 +100,23 @@ void moveLinear() {
   }
 
   int stepsX = (newX - position) * STEPS_MM;
-  int stepsY = (newY) * STEPS_MM; // Adjust as needed
+  int totalSteps = abs(stepsX);  // Number of steps to take
+  int stepDirection = (stepsX > 0) ? 1 : -1; // Step direction
 
-  stepperMotor.step(stepsX); // Move X
-  // Add movement for Y-axis if applicable
+  // Move servo to new position (example: map Y to servo angle)
+  int servoTargetAngle = map(newY, 0, 100, 0, 180); // Adjust range as needed
+  toolServo.write(servoTargetAngle);
+
+  // Stepper moves in small steps while allowing other tasks to run
+  for (int i = 0; i < totalSteps; i++) {
+    if (emergencyStop) break;  // Stop immediately if emergency triggered
+    stepperMotor.step(stepDirection); // Move one step
+    delay(2); // Small delay to allow both to move together
+  }
 
   position = newX;
   Commands.comment("Moved to X:" + String(newX) + " Y:" + String(newY));
+  drawProgress("Finished");
 }
 
 void setAbsolute() {
@@ -100,12 +141,34 @@ void setMillimeters() {
 
 void endProgram() {
   Commands.comment("Program ended (M2)");
+  drawProgress("Awaiting input");
 }
 
 void toolChange() {
+  if (emergencyStop) return;
+  drawProgress("Tool Changing...");
   toolServo.write(90); // Move to tool change position
   delay(1000);
   toolServo.write(0);
   Commands.comment("Tool change complete (M6)");
+  drawProgress("Finished");
 }
 
+void checkEmergencyStop() {
+  if (digitalRead(EMERGENCY_STOP_PIN) == LOW) {
+    emergencyStop = true;
+    Commands.comment("Emergency Stop Activated!");
+    drawProgress("Emergency Stop");
+  } else {
+    emergencyStop = false;
+  }
+}
+
+void drawProgress(const char* message) {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(10, 25);
+  display.print(message);
+  display.display();
+}
