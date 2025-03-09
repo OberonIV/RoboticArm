@@ -1,0 +1,111 @@
+#include <Stepper.h>
+#include <Servo.h>
+#include <gcode.h>
+
+#define NUMCOMMANDS 9
+#define STEPS_PER_REV 2048  // 28BYJ-48 stepper steps per revolution
+#define STEPS_MM 10         // Steps per mm for 28BYJ-48 (adjust as needed)
+
+// Stepper motor pins
+#define STEP_IN1 8
+#define STEP_IN2 9
+#define STEP_IN3 10
+#define STEP_IN4 11
+
+// Servo pin
+#define SERVO_PIN 3
+
+// Stepper motor initialization
+Stepper stepperMotor(STEPS_PER_REV, STEP_IN1, STEP_IN3, STEP_IN2, STEP_IN4);
+Servo toolServo;
+
+bool absolutePositioning = true; // G90: Absolute mode, G91: Relative mode
+bool useMM = true;  // G21: mm mode, G20: inch mode
+
+// Current position
+double position = 0;
+
+void homing();
+void moveLinear();
+void setAbsolute();
+void setRelative();
+void setInches();
+void setMillimeters();
+void endProgram();
+void toolChange();
+
+commandscallback commands[NUMCOMMANDS] = {
+  {"G28", homing}, {"G0", moveLinear}, {"G1", moveLinear},
+  {"G90", setAbsolute}, {"G91", setRelative},
+  {"G20", setInches}, {"G21", setMillimeters},
+  {"M2", endProgram}, {"M6", toolChange}
+};
+
+gcode Commands(NUMCOMMANDS, commands);
+
+void setup() {
+  Commands.begin();
+  stepperMotor.setSpeed(10); // Adjust speed as needed
+  toolServo.attach(SERVO_PIN);
+}
+
+void loop() {
+  Commands.available();
+}
+
+void homing() {
+  position = 0;
+  Commands.comment("Homing completed.");
+}
+
+void moveLinear() {
+  double newX = position;
+  if (Commands.availableValue('X')) newX = Commands.GetValue('X');
+  double newY = 0; // Default Y axis value
+  if (Commands.availableValue('Y')) newY = Commands.GetValue('Y');
+
+  if (!absolutePositioning) {
+    newX += position;
+  }
+
+  int stepsX = (newX - position) * STEPS_MM;
+  int stepsY = (newY) * STEPS_MM; // Adjust as needed
+
+  stepperMotor.step(stepsX); // Move X
+  // Add movement for Y-axis if applicable
+
+  position = newX;
+  Commands.comment("Moved to X:" + String(newX) + " Y:" + String(newY));
+}
+
+void setAbsolute() {
+  absolutePositioning = true;
+  Commands.comment("Set to absolute positioning (G90)");
+}
+
+void setRelative() {
+  absolutePositioning = false;
+  Commands.comment("Set to relative positioning (G91)");
+}
+
+void setInches() {
+  useMM = false;
+  Commands.comment("Set to inches mode (G20)");
+}
+
+void setMillimeters() {
+  useMM = true;
+  Commands.comment("Set to millimeters mode (G21)");
+}
+
+void endProgram() {
+  Commands.comment("Program ended (M2)");
+}
+
+void toolChange() {
+  toolServo.write(90); // Move to tool change position
+  delay(1000);
+  toolServo.write(0);
+  Commands.comment("Tool change complete (M6)");
+}
+
