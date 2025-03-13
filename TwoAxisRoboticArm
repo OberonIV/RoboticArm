@@ -186,7 +186,7 @@ void drawProgress(const char* message) {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
-  display.setCursor(10, 25);
+  display.setCursor(10, 10);
   display.print(message);
   display.display();
 }
