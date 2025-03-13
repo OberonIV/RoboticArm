@@ -1,61 +1,103 @@
-/*
-Author: Carl Jeffri Resurreccion
-Date: Feburary 1, 2025
-This code verifies two 28BYJ-48 motors with different commands.
-These commands include enabling either motor, both motors,
-both motors operating in different directions, and halting all processes.
-*/
-#include <Stepper.h>
 #include <Servo.h>
+#include <AccelStepper.h>
 
-const int steps_per_revolution = 2048;
-const int role_per_minute = 10;  // Adjust speed for smooth motion
+#define IN1 8
+#define IN2 9
+#define IN3 10
+#define IN4 11
+#define SERVO_PIN 3
 
-// Initialize stepper motor
-Stepper stepper_1(steps_per_revolution, 8, 10, 9, 11);
+Servo xServo;
+AccelStepper yStepper(AccelStepper::HALF4WIRE, IN1, IN3, IN2, IN4);
 
-// Initialize servo motor
-Servo servo_1;
-const int servo_pin = 3;  // Servo connected to pin 3
+bool absoluteMode = true; // Default is G90 (absolute positioning)
+bool useInches = false;   // Default is G21 (millimeters)
+float xPosition = 90.0;   // Servo starts at 90 degrees (midpoint)
+float yPosition = 0.0;    // Stepper starts at zero
+
+const float STEPS_PER_MM = 10.0; // Adjust as per calibration
+const float STEPS_PER_INCH = STEPS_PER_MM * 25.4;
 
 void setup() {
-  Serial.begin(9600); // Baud rate
-  stepper_1.setSpeed(role_per_minute);
-  servo_1.attach(servo_pin);
-  
-  Serial.println("Enter a command:");
-  Serial.println("'s' = Move Stepper");
-  Serial.println("'x' = Stop Stepper");
+    Serial.begin(115200);
+    xServo.attach(SERVO_PIN);
+    xServo.write(xPosition);
+    
+    yStepper.setMaxSpeed(500);
+    yStepper.setAcceleration(200);
+    yStepper.setSpeed(100);
 }
 
 void loop() {
-  static int servo_angle = 0;
-  static bool increasing = true;
-
-  if (Serial.available() > 0) {
-    String input = Serial.readStringUntil('\n'); // Read user input
-    input.trim(); // Remove any whitespace
-    
-    if (input == "s") {
-      Serial.println("Turning Stepper Motor and Moving Servo Continuously");
-      for (int i = 0; i < steps_per_revolution; i++) {
-        stepper_1.step(1);
-      }
-    } 
-    else if (input == "x") {
-      Serial.println("Stopping Stepper Motor");
-      // No stepping occurs, effectively stopping the motor
+    if (Serial.available()) {
+        String command = Serial.readStringUntil('\n');
+        command.trim();
+        processGCode(command);
     }
-  }
-  
-  // Continuously move the servo back and forth
-  if (increasing) {
-    servo_angle++;
-    if (servo_angle >= 180) increasing = false;
-  } else {
-    servo_angle--;
-    if (servo_angle <= 0) increasing = true;
-  }
-  servo_1.write(servo_angle);
-  delay(10); // Adjust speed of continuous motion
+    yStepper.run();
+}
+
+void processGCode(String command) {
+    if (command.startsWith("G0") || command.startsWith("G1")) {
+        float newX = xPosition;
+        float newY = yPosition;
+        bool moveFast = command.startsWith("G0"); // G0 is rapid move
+
+        int xIndex = command.indexOf('X');
+        int yIndex = command.indexOf('Y');
+
+        if (xIndex != -1) newX = extractValue(command, xIndex + 1);
+        if (yIndex != -1) newY = extractValue(command, yIndex + 1);
+
+        moveToPosition(newX, newY, moveFast);
+    } 
+    else if (command == "G90") {
+        absoluteMode = true;
+    } 
+    else if (command == "G91") {
+        absoluteMode = false;
+    } 
+    else if (command == "G20") {
+        useInches = true;
+    } 
+    else if (command == "G21") {
+        useInches = false;
+    } 
+    else if (command == "M2") {
+        Serial.println("Program End");
+        while (1);
+    } 
+    else if (command == "M6") {
+        Serial.println("Tool Change Requested");
+    }
+}
+
+void moveToPosition(float targetX, float targetY, bool rapid) {
+    if (!absoluteMode) {
+        targetX += xPosition;
+        targetY += yPosition;
+    }
+
+    float stepFactor = useInches ? STEPS_PER_INCH : STEPS_PER_MM;
+    long ySteps = targetY * stepFactor;
+
+    xPosition = constrain(targetX, 0, 180); // Servo range 0-180
+    yPosition = targetY;
+
+    xServo.write(xPosition);
+
+    yStepper.moveTo(ySteps);
+    if (rapid) {
+        yStepper.setMaxSpeed(1000);
+    } else {
+        yStepper.setMaxSpeed(500);
+    }
+}
+ 
+float extractValue(String command, int startIndex) {
+    int endIndex = startIndex;
+    while (endIndex < command.length() && isDigit(command[endIndex]) || command[endIndex] == '.' || command[endIndex] == '-') {
+        endIndex++;
+    }
+    return command.substring(startIndex, endIndex).toFloat();
 }
