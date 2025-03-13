@@ -110,7 +110,7 @@ void moveLinear() {
 
   // Slow servo movement (Y mapped to servo angle)
   int startAngle = toolServo.read();
-  int targetAngle = map(newY, 0, 100, 0, 180); // Adjust range as needed
+  int targetAngle = map(newY, 0, 10, 0, 180); // Adjust range as needed
   moveServoSlowly(startAngle, targetAngle, 5); // Adjust delay as needed
 
   // Stepper moves in small steps while allowing other tasks to run
@@ -186,7 +186,7 @@ void drawProgress(const char* message) {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
-  display.setCursor(10, 10);
+  display.setCursor(10, 25);
   display.print(message);
   display.display();
 }
